@@ -3,9 +3,9 @@ A modular API overhaul mod for Cities: Skylines
 
 ##### A rough outline of how the mod will work now:
 
--Buildings which utilize this mod will have a single 'CoreAI' class which inherits from CommonBuildingAI, and basically has an override for each of the important methods for service and zoned buildings. Each said override contains a delegate which is invoked when that method is called.
+- Buildings which utilize this mod will have a single 'CoreAI' class which inherits from CommonBuildingAI, and basically has an override for each of the important methods for service and zoned buildings. Each said override contains a delegate which is invoked when that method is called.
 
--'Modules' are static classes made by me and/or any other modders flagged with an attribute. This attribute also denotes what kind of behavior the class pertains to (i.e. Light Residential, Police Station, Monument, etc). Any methods in said class which are flagged with another attribute and named correctly are found on load and a delegate created for them, along with various metadata such as if the method is 'default' (aka vanilla behavior converted into module form). A manager stores these delegates so that they only need found and created once.
+- 'Modules' are static classes made by me and/or any other modders flagged with an attribute. This attribute also denotes what kind of behavior the class pertains to (i.e. Light Residential, Police Station, Monument, etc). Any methods in said class which are flagged with another attribute and named correctly are found on load and a delegate created for them, along with various metadata such as if the method is 'default' (aka vanilla behavior converted into module form). A manager stores these delegates so that they only need found and created once.
 
 - Each CoreAI contains a Properties bag of sorts, and as the CoreAI instance is passed into the delegate, the delegate functions have access to a universal, extensible collection of variables to update/modify. 
 
