@@ -13,33 +13,56 @@ namespace ModularSkylines
     //TODO: rework simulation ticking to only recalculate consumption/use values every few ticks or on state change.
     public class CoreAI : CommonBuildingAI
     {
-        public ColorAI colorAI;
+        // Last known building color
+        public Color color;
+        // Only one method of rendering decoration placement may be used (vanilla is growable vs ploppable)
         public DecorationAI decorationAI;
         public FireAI fireAI;
-        public LevelAI levelAI;
+        public LevelUpAI levelAI;
         public bool playerControlled;
         public bool baseCosts;
         private bool isGrowable;
+
+
 
         //Lists of modules for building based on type of resource they alter/interact with.
         private List<BuildingModule> BuildingModules;
         private List<SimulationBuildingModule> SimulationBuildingModules; 
 
-        private List<IImmaterialResourceModule> ImmaterialResourceModules;
-        private List<INaturalResourceModule> NaturalResourceModules;
         private List<IEconomyResourceModule> EconomyResourceModules;
         private List<IWaterModule> WaterModules;
         private List<IElectricModule> ElectricModules;
         private List<IGarbageModule> GarbageModules;
 
+        // Modules which may return a color for the building.
+        private List<IColorModule> ColorModules;
+
         private Dictionary<NaturalResourceManager.Resource, List<INaturalResourceModule>> NatualResourceMapping;
         private Dictionary<ImmaterialResourceManager.Resource, List<IImmaterialResourceModule>> ImmaterialResourceMapping;
-        private Dictionary<string, List<BuildingModule>> CustomResourceMapping; 
-         
+        private Dictionary<string, List<BuildingModule>> CustomResourceMapping;
+
+        //Bag for custom variables.
+        //TODO: reworks this as an array lookup system whose keys are generated at runtime from config data.
+        //
+        private Dictionary<Type, object> dataDictionary;
+
+
+        public T GetData<T>() where T : new()
+        {
+            object data;
+            if(dataDictionary.TryGetValue(typeof(T), out data))
+                return (T)data;
+            return new T();
+        }
+
+        public void SetData<T>(T data)
+        {
+
+        }
 
         //Player Building AI properties
         //TODO: remove the Attributes and implement own custom UI system
-        
+
         public MessageInfo m_onCompleteMessage;
 
         public ManualMilestone m_createPassMilestone;
@@ -79,7 +102,11 @@ namespace ModularSkylines
         //The exact execution of GetColor is handled by a separate class, which this class stores a reference to.
         public override Color GetColor(ushort buildingID, ref Building data, InfoManager.InfoMode infoMode)
         {
-            return colorAI.GetColor(buildingID, ref data, infoMode);
+            foreach (var module in ColorModules)
+            {
+                if (module.GetColor(buildingID, ref data, infoMode, ref color)) return color;
+            }
+            return color;
         }
 
         //Added accessor to base color method
@@ -149,7 +176,7 @@ namespace ModularSkylines
         public override int GetResourceRate(ushort buildingID, ref Building data, NaturalResourceManager.Resource resource)
         {
             int rate = base.GetResourceRate(buildingID, ref data, resource);
-            foreach (var module in NaturalResourceModules)
+            foreach (var module in NatualResourceMapping[resource])
             {
                 module.GetNaturalResourceRate(ref rate, buildingID, ref data, resource);
             }
@@ -159,7 +186,8 @@ namespace ModularSkylines
         public override int GetResourceRate(ushort buildingID, ref Building data, ImmaterialResourceManager.Resource resource)
         {
             int rate = base.GetResourceRate(buildingID, ref data, resource);
-            foreach (var module in ImmaterialResourceModules)
+            
+            foreach (var module in ImmaterialResourceMapping[resource])
             {
                 module.GetImmaterialResourceRate(ref rate, buildingID, ref data, resource);
             }
@@ -239,10 +267,7 @@ namespace ModularSkylines
         public override void InitializePrefab()
         {
             base.InitializePrefab();
-            if (this.m_createPassMilestone != null)
-            {
-                this.m_createPassMilestone.SetPrefab(this.m_info);
-            }
+            this.m_createPassMilestone?.SetPrefab(this.m_info);
         }
 
         // Allow modules to handle actions for building lifecycle.
@@ -265,7 +290,7 @@ namespace ModularSkylines
             
             foreach (var module in BuildingModules)
             {
-                module.OnCreateBuilding(buildingID, ref data);
+                module.OnCreateBuilding(buildingID, ref data, this);
             }
         }
 
@@ -284,14 +309,20 @@ namespace ModularSkylines
             int visitCount = this.CalculateVisitplaceCount(new Randomizer((int)buildingID), data.Width, data.Length);
             
             */
-            BuildingModule.BuildingLoadInfo info = new BuildingModule.BuildingLoadInfo();
-
+            base.BuildingLoaded(buildingID, ref data, version);
+            
             foreach (var module in BuildingModules)
             {
                 module.OnBuildingLoaded(buildingID, ref data, version, this);
 
             }
-            base.EnsureCitizenUnits(buildingID, ref data, homeCount, workCount, visitCount, 0);
+            var citizens = GetData<Citizens>();
+            
+            base.EnsureCitizenUnits(buildingID, ref data, citizens.homeCount, citizens.GetWorkers().totalWorkers, citizens.GetTourists().totalVisitors, GetData<Education>().m_studentCount);
+            
+                
+            if(playerControlled)
+                Singleton<BuildingManager>.instance.AddServiceBuilding(buildingID, this.m_info.m_class.m_service);
         }
 
         public override void ReleaseBuilding(ushort buildingID, ref Building data)
@@ -299,7 +330,7 @@ namespace ModularSkylines
             base.ReleaseBuilding(buildingID, ref data);
             foreach (var module in BuildingModules)
             {
-                module.OnReleaseBuilding(buildingID, ref data);
+                module.OnReleaseBuilding(buildingID, ref data, this);
             }
         }
 
@@ -308,7 +339,7 @@ namespace ModularSkylines
             base.BuildingCompleted(buildingID, ref buildingData);
             foreach (var module in BuildingModules)
             {
-                module.OnBuildingCompleted(buildingID, ref buildingData);
+                module.OnBuildingCompleted(buildingID, ref buildingData, this);
             }
             // PlayerBuildingAI code
             //Singleton<MessageManager>.instance.TryCreateMessage(this.m_onCompleteMessage, Singleton<MessageManager>.instance.GetRandomResidentID());
@@ -573,9 +604,10 @@ namespace ModularSkylines
             {
                 foreach (var module in BuildingModules)
                 {
-                    module.OnBuildingUpgraded(buildingID, ref data);
+                    module.OnBuildingUpgraded(buildingID, ref data, this);
                 }
             }
+            /*
             int num;
             int num2;
             int num3;
@@ -584,7 +616,10 @@ namespace ModularSkylines
             int workCount = num + num2 + num3 + num4;
             int homeCount = this.CalculateHomeCount(new Randomizer((int)buildingID), data.Width, data.Length);
             int visitCount = this.CalculateVisitplaceCount(new Randomizer((int)buildingID), data.Width, data.Length);
-            base.EnsureCitizenUnits(buildingID, ref data, homeCount, workCount, visitCount, 0);
+            */
+            var citizens = GetData<Citizens>();
+
+            base.EnsureCitizenUnits(buildingID, ref data, citizens.homeCount, citizens.GetWorkers().totalWorkers, citizens.GetTourists().totalVisitors, GetData<Education>().m_studentCount);
         }
 
         //as above
@@ -599,7 +634,7 @@ namespace ModularSkylines
         //added conditional so as to confine ranges only for growables.
         public override void GetWidthRange(out int minWidth, out int maxWidth)
         {
-            if (isGrowable)
+            if (!playerControlled)
             {
                 minWidth = 1;
                 maxWidth = 4;
@@ -612,7 +647,7 @@ namespace ModularSkylines
 
         public override void GetLengthRange(out int minLength, out int maxLength)
         {
-            if (isGrowable)
+            if (!playerControlled)
             {
                 minLength = 1;
                 maxLength = 4;
@@ -635,6 +670,7 @@ namespace ModularSkylines
         }
 
         //Not sure I need these....
+        //Definitely don't need these inside this class. they belong inside modules.
         public virtual int CalculateHomeCount(Randomizer r, int width, int length)
         {
             return 0;

@@ -10,7 +10,7 @@ using UnityEngine;
 namespace ModularSkylines
 {
     // A general AI for handling level up data and process. inherit and override this to customize. Selected per-asset or default to this.
-    public class LevelAI
+    public class LevelUpAI
     {
         public BuildingInfo GetUpgradeInfo(ushort buildingID, ref Building data, BuildingInfo info)
         {

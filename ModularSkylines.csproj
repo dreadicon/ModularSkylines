@@ -54,14 +54,19 @@
   <ItemGroup>
     <Compile Include="CoreAI.cs" />
     <Compile Include="ColorAI.cs" />
+    <Compile Include="DataManagment.cs" />
     <Compile Include="DecorationAI.cs" />
+    <Compile Include="EditorInfoDisplay.cs" />
     <Compile Include="Enums.cs" />
     <Compile Include="FireAI.cs" />
-    <Compile Include="LevelAI.cs" />
+    <Compile Include="IngameInfoDisplay.cs" />
+    <Compile Include="LevelUpAI.cs" />
     <Compile Include="ManualWorkerCountModule.cs" />
     <Compile Include="ModularPrivateAI.cs" />
+    <Compile Include="ModuleManager.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="BuildingModule.cs" />
+    <Compile Include="VanillaPrivateBuildingInitialize.cs" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="VanillaModules\" />

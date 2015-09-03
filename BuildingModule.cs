@@ -10,21 +10,9 @@ namespace ModularSkylines
     /// </summary>
     public abstract class BuildingModule
     {
-        public struct BuildingLoadInfo
-        {
-            public int homeCount;
-            public int workCount;
-            public int visitCount;
-            public int studentCount;
-        }
-        //flags for which resource lists to add this module to. probably should rework this to be more elegant.
-        public bool HasElectric = false;
-        public bool HasWater = false;
-        public bool HasGarbage = false;
-        public bool HasNatural = false;
-        public bool HasEconomy = false;
-        public bool HasImmaterial = false;
-        public bool HasCustom = false;
+        public List<ModuleManager.DelegateData> delegates;
+        public List<EditorInfoDisplay.ElementProperties> DisplayElements;
+        public List<IngameInfoDisplay.ElementProperties> OptionsFields;
 
         //Events for building lifecycle. Optional implementation.
         public virtual void OnCreateBuilding(ushort buildingID, ref Building data, CoreAI core) { }
@@ -38,14 +26,29 @@ namespace ModularSkylines
 
     /// <summary>
     /// A child of the BuildingModule class, used explicitly for active/live simulation effect. These will impact performance! So take care what you do with them.
-    /// Otherwise, they are the same as the BuildingModule class.
+    /// Note that this class, unlike the BuildingModule class, has a dedicated instance created per-object. It can store data unique to the building instance.
     /// </summary>
     public abstract class SimulationBuildingModule : BuildingModule
     {
+        public CoreAI core; // Saves a reference to the building which calls it, in case data from it is needed.
+
         public void OnSimulationStep(ushort buildingID, ref Building buildingData, ref Building.Frame frameData) { }
         public void OnActiveSimulationStep(ushort buildingID, ref Building buildingData, ref Building.Frame frameData) { }
     }
 
+    public class ModuleData
+    {
+        //flags for which resource lists to add this module to. probably should rework this to be more elegant.
+        public bool HasElectric = false;
+        public bool HasWater = false;
+        public bool HasGarbage = false;
+        public bool HasNatural = false;
+        public bool HasEconomy = false;
+        public bool HasImmaterial = false;
+        public bool HasCustom = false;
+    }
+
+    // Module Interfaces for bahaviors
     interface INaturalResourceModule
     {
         List<NaturalResourceManager.Resource> GetNaturalResources();
@@ -87,5 +90,11 @@ namespace ModularSkylines
     interface ILevelUpModule
     {
         void OnLevelUpCheck(ushort buildingID, ref Building data);
+    }
+
+    interface IColorModule
+    {
+        int GetPriority(); // Returns how early this should be run as a priority
+        bool GetColor(ushort buildingID, ref Building data, InfoManager.InfoMode infoMode, ref Color color);
     }
 }
