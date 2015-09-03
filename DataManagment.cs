@@ -6,24 +6,36 @@ using System.Threading.Tasks;
 
 namespace ModularSkylines
 {
-
-
-
+    
     public class Citizens
     {
-        public int homeCount = 0;
+        private static readonly Tourists DefaulTourists = new Tourists();
+        private static readonly Workers DefaultWorkers = new Workers();
+
+        public short homeCount = 0;
 
         public Workers GetWorkers()
         {
-            if(workers == null) return new Workers();
+            if(workers == null) return DefaultWorkers;
             return workers;
+        }
+
+        public void AddWorkers()
+        {
+            if(this.workers == null) this.workers = new Workers();
         }
 
         public Tourists GetTourists()
         {
-            if(tourists == null) return new Tourists();
+            if(tourists == null) return DefaulTourists;
             return tourists;
         }
+
+        public void AddTourists()
+        {
+            if (this.tourists == null) this.tourists = new Tourists();
+        }
+
         public Workers workers;
         public Tourists tourists;
     }
@@ -40,24 +52,24 @@ namespace ModularSkylines
     public class Tourists
     {
         public int totalVisitors => m_visitPlaceCount0 + m_visitPlaceCount1 + m_visitPlaceCount2;
-        public int m_attractivenessAccumulation = 0;
-        public int m_visitPlaceCount0 = 0;
-        public int m_visitPlaceCount1 = 0;
-        public int m_visitPlaceCount2 = 0;
+        public short m_attractivenessAccumulation = 0;
+        public short m_visitPlaceCount0 = 0;
+        public short m_visitPlaceCount1 = 0;
+        public short m_visitPlaceCount2 = 0;
     }
 
     public class Education
     {
         public byte educationTier = 0;
-        public int m_studentCount = 0;
+        public short m_studentCount = 0;
         public float m_educationRadius = 0;
-        public int m_educationAccumulation = 0;
+        public short m_educationAccumulation = 0;
     }
 
     public class Medical
     {
         public int m_healthCareAccumulation = 0;
-        public int m_healthCareRadius = 0;
+        public float m_healthCareRadius = 0;
         public int m_ambulanceCount = 0;
         public int m_patientCapacity = 0;
         public int m_curingRate = 0;
@@ -75,8 +87,8 @@ namespace ModularSkylines
 
     public class Entertainment
     {
-        public int m_entertainmentAccumulation = 0;
-        public int m_entertainmentRadius = 0;
+        public short m_entertainmentAccumulation = 0;
+        public float m_entertainmentRadius = 0;
     }
 
 }

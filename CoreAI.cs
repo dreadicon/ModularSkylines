@@ -23,8 +23,6 @@ namespace ModularSkylines
         public bool baseCosts;
         private bool isGrowable;
 
-
-
         //Lists of modules for building based on type of resource they alter/interact with.
         private List<BuildingModule> BuildingModules;
         private List<SimulationBuildingModule> SimulationBuildingModules; 
@@ -41,11 +39,10 @@ namespace ModularSkylines
         private Dictionary<ImmaterialResourceManager.Resource, List<IImmaterialResourceModule>> ImmaterialResourceMapping;
         private Dictionary<string, List<BuildingModule>> CustomResourceMapping;
 
-        //Bag for custom variables.
+        //Bag for custom properties.
         //TODO: reworks this as an array lookup system whose keys are generated at runtime from config data.
         //
         private Dictionary<Type, object> dataDictionary;
-
 
         public T GetData<T>() where T : new()
         {
@@ -57,7 +54,7 @@ namespace ModularSkylines
 
         public void SetData<T>(T data)
         {
-
+            dataDictionary[typeof (T)] = data;
         }
 
         //Player Building AI properties

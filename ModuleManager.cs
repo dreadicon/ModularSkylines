@@ -17,7 +17,19 @@ namespace ModularSkylines
         OnReleaseBuilding,
         OnBuildingLoaded,
         OnBuildingUpgraded,
-        OnBuildingCompleted
+        OnBuildingCompleted,
+        OnSimulationStep,
+        OnLevelUpCheck,
+        OnActiveSimulationStep,
+        GetNaturalResourceRate,
+        GetEcconomyResourceRate,
+        GetImmaterialResourceRate,
+        GetElectricRate,
+        GetWaterRate,
+        GetGarbageRate,
+        GetFireParameters,
+        GetColor,
+        CustomModule
     }
     public class ModuleManager : Singleton<ModuleManager>
     {
@@ -30,7 +42,7 @@ namespace ModularSkylines
             {BuildingEvents.OnBuildingCompleted, typeof(BuildingDelegate) },
             {BuildingEvents.OnBuildingUpgraded, typeof(BuildingDelegate) },
             {BuildingEvents.OnBuildingLoaded, typeof(OnBuildingLoaded) },
-            {BuildingEvents.OnCreateBuilding, typeof(BuildingDelegate)},
+            {BuildingEvents.OnSimulationStep, typeof(BuildingDelegate)},
 
         };
 
@@ -38,6 +50,8 @@ namespace ModularSkylines
         public delegate void OnBuildingLoaded(ushort building, ref Building data, uint version, CoreAI core);
         public delegate void BuildingColor(ushort buildingID, ref Building data, InfoManager.InfoMode infoMode);
 
+        public delegate void SimulationDelegate(
+            ushort building, ref Building data, ref Building.Frame frameData, CoreAI core);
 
         public struct DelegateData
         {
@@ -57,10 +71,12 @@ namespace ModularSkylines
         }
 
         // Collections for accessing and coordinating the delegates.
+        private static List<Type> loadedTypes = new List<Type>();
         private List<DelegateData> delegates;
         public Dictionary<BuildingEvents, List<DelegateData>> delegateEventMapping;
         public Dictionary<string, DelegateData> delegateNameDictionary;
         public Dictionary<string, DelegateData> defaultDelegates;
+
         /// <summary>
         /// Method for adding a delegate to the collection. 
         /// </summary>
@@ -68,20 +84,13 @@ namespace ModularSkylines
         /// <param name="eventInfo">MethodInfo for the method to be invoked by the delegate</param>
         public void AddDelegate(Type type, MethodInfo eventInfo)
         {
-            BuildingEvents eventID = (BuildingEvents)Enum.Parse(typeof(BuildingEvents),eventInfo.Name);
-            if (!eventInfo.IsStatic)
+            
+            if (delegateNameDictionary.ContainsKey(type + "_" + eventInfo.Name))
             {
-                Debug.Log("Warning: tried to load a non-static method. How is this even possible!?");
+                Debug.Log("Warning: tried to add event delegate " + eventInfo.Name + " for module " + type + ", but an entry already exists!");
                 return;
             }
-            foreach (var del in delegates)
-            {
-                if (del.eventID == eventID && type == del.moduleType)
-                {
-                    Debug.Log("Warning: tried to add event delegate " + eventID + " for module " + type + ", but an entry already exists!");
-                    return;
-                }
-            }
+            BuildingEvents eventID = (BuildingEvents)Enum.Parse(typeof(BuildingEvents), eventInfo.Name);
             var delType = EventMap[eventID];
             Delegate newDelegate = Delegate.CreateDelegate(delType, eventInfo);
             
@@ -92,8 +101,10 @@ namespace ModularSkylines
             delegateNameDictionary[newDelegateData.name] = newDelegateData;
         }
 
-        private List<Type> loadedTypes = new List<Type>();
-
+        /// <summary>
+        /// Using reflection, this method finds all classes flagged as modules, then passes the methods
+        /// to the appropriate handler. This should only be called once, at program load.
+        /// </summary>
         public void LoadBuildingModules()
         {
             var moduleTypes =
@@ -103,7 +114,6 @@ namespace ModularSkylines
                 where moduleAttribute != null
 
                 select new { Module = t, ModuleAttribute = (BuildingModuleEventAttribute)moduleAttribute};
-            
 
             foreach (var module in moduleTypes.ToList())
             {
@@ -113,21 +123,24 @@ namespace ModularSkylines
                     where methodAttribute != null
                     select new {Method = m, MethodAttribute = methodAttribute};
 
+                if(loadedTypes.Contains(module.Module)) continue;
+
                 foreach (var method in methods.ToList())
                 {
                     AddDelegate(module.Module, method.Method);
+                    //TODO: handle module defaults here using attribute data.
                 }
-
+                
                 loadedTypes.Add(module.Module);
             }
         } 
 
         void OnAwake()
         {
-            
+            if(loadedTypes.Count < 1) LoadBuildingModules();
         }
 
-        public void LoadAllModules()
+        public void LoadAssetModuleConfigs()
         {
             foreach (Package package in PackageManager.allPackages)
             {
@@ -138,7 +151,7 @@ namespace ModularSkylines
                         string dir = Path.GetDirectoryName(asset.pathOnDisk) + assetModuleFileName;
                         if (File.Exists(dir))
                         {
-                            asset.name
+                            
                         }
                     }
                 }
@@ -146,7 +159,9 @@ namespace ModularSkylines
 
         }
 
-        public string CreateOrOverwriteAssetConfig(Package.Asset asset, )
+        public void CreateOrOverwriteAssetConfig(Package.Asset asset)
+        {
+        }
     }
 
     [AttributeUsage(AttributeTargets.Class)]

@@ -8,7 +8,8 @@ using UnityEngine;
 
 namespace ModularSkylines
 {
-    public static class VanillaCalculations
+    [BuildingModule]
+    public static class VanillaCommercial
     {
         public static void SetCommercialWorkerCount(ushort buildingID, ref Building data, Citizens citizens)
         {

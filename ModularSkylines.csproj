@@ -52,6 +52,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BuildingBehaviorManager.cs" />
     <Compile Include="CoreAI.cs" />
     <Compile Include="ColorAI.cs" />
     <Compile Include="DataManagment.cs" />
