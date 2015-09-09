@@ -17,11 +17,17 @@ namespace ModularSkylines
         public Color color;
         // Only one method of rendering decoration placement may be used (vanilla is growable vs ploppable)
         public DecorationAI decorationAI;
+
+        public BuildingBehaviorManager.BuildingBehaviors behavior;
+
         public FireAI fireAI;
         public LevelUpAI levelAI;
         public bool playerControlled;
         public bool baseCosts;
         private bool isGrowable;
+        public bool commonConsumptionUpdate;
+        public CommonConsumption commonConsumption;
+        public Workers workers;
 
         //Lists of modules for building based on type of resource they alter/interact with.
         private List<BuildingModule> BuildingModules;
@@ -41,20 +47,20 @@ namespace ModularSkylines
 
         //Bag for custom properties.
         //TODO: reworks this as an array lookup system whose keys are generated at runtime from config data.
-        //
-        private Dictionary<Type, object> dataDictionary;
+        //Note: I used RuntimeTypeHandle as typeof(T).TypeHandle is substantially faster than just typeof(T)
+        private Dictionary<RuntimeTypeHandle, object> dataDictionary;
 
-        public T GetData<T>() where T : new()
+        public T GetData<T>() where T : DataModule<T>, new()
         {
             object data;
-            if(dataDictionary.TryGetValue(typeof(T), out data))
+            if(dataDictionary.TryGetValue(typeof(T).TypeHandle, out data))
                 return (T)data;
             return new T();
         }
 
         public void SetData<T>(T data)
         {
-            dataDictionary[typeof (T)] = data;
+            dataDictionary[typeof (T).TypeHandle] = data;
         }
 
         //Player Building AI properties
@@ -68,23 +74,14 @@ namespace ModularSkylines
 
         public int m_maxLevel = 1;
 
+        public int m_noiseAccumulation = 0;
+        public int m_noiseRadius = 0;
+
         [CustomizableProperty("Construction Cost", "Gameplay common")]
         public int m_constructionCost = 1000;
 
         [CustomizableProperty("Maintenance Cost", "Gameplay common")]
-        public int m_maintenanceCost = 100;
-
-        [CustomizableProperty("Electricity Consumption", "Electricity")]
-        public int m_electricityConsumption = 10;
-
-        [CustomizableProperty("Water Consumption", "Water")]
-        public int m_waterConsumption = 10;
-
-        [CustomizableProperty("Sewage Accumulation", "Water")]
-        public int m_sewageAccumulation = 10;
-
-        [CustomizableProperty("Garbage Accumulation", "Gameplay common")]
-        public int m_garbageAccumulation = 10;
+        public int m_maintenanceCost = 0;
 
         [CustomizableProperty("Fire Hazard", "Gameplay common")]
         public int m_fireHazard = 1;
@@ -169,87 +166,21 @@ namespace ModularSkylines
             return Locale.Get("BUILDING_STATUS_DEFAULT");
         }
 
-        //Set up to iterate over each relevant module for the building, running the appropriate calculations as needed.
-        public override int GetResourceRate(ushort buildingID, ref Building data, NaturalResourceManager.Resource resource)
-        {
-            int rate = base.GetResourceRate(buildingID, ref data, resource);
-            foreach (var module in NatualResourceMapping[resource])
-            {
-                module.GetNaturalResourceRate(ref rate, buildingID, ref data, resource);
-            }
-            return rate;
-        }
-
         public override int GetResourceRate(ushort buildingID, ref Building data, ImmaterialResourceManager.Resource resource)
         {
-            int rate = base.GetResourceRate(buildingID, ref data, resource);
-            
-            foreach (var module in ImmaterialResourceMapping[resource])
-            {
-                module.GetImmaterialResourceRate(ref rate, buildingID, ref data, resource);
-            }
-            return rate;
+            if (resource == ImmaterialResourceManager.Resource.NoisePollution) return this.m_noiseAccumulation;
+            return base.GetResourceRate(buildingID, ref data, resource);
         }
 
-        public override int GetResourceRate(ushort buildingID, ref Building data, EconomyManager.Resource resource)
-        {
-            int rate = base.GetResourceRate(buildingID, ref data, resource);
-            foreach (var module in EconomyResourceModules)
-            {
-                module.GetEconomyResourceRate(ref rate, buildingID, ref data, resource);
-            }
-            return rate;
-        }
 
-        public override int GetElectricityRate(ushort buildingID, ref Building data)
+        public void GetConsumptionRates(Randomizer r, int productionRate, out int electricityConsumption, out int waterConsumption, out int sewageAccumulation, out int garbageAccumulation, out int incomeAccumulation)
         {
-            int rate = base.GetElectricityRate(buildingID, ref data);
-            foreach (var module in ElectricModules)
-            {
-                module.GetElectricRate(ref rate, buildingID, ref data);
-            }
-            /*
-            // PlayerBuildingAI code
-            int productionRate = (int)data.m_productionRate;
-            int budget = Singleton<EconomyManager>.instance.GetBudget(this.m_info.m_class);
-            productionRate = PlayerBuildingAI.GetProductionRate(productionRate, budget);
-            return -(productionRate * this.m_electricityConsumption / 100);
-            */
-            return rate;
-        }
-
-        public override int GetWaterRate(ushort buildingID, ref Building data)
-        {
-            int rate = base.GetWaterRate(buildingID, ref data);
-            foreach (var module in WaterModules)
-            {
-                module.GetWaterRate(ref rate, buildingID, ref data);
-            }
-            /*
-            // PlayerBuildingAI code
-            int productionRate = (int)data.m_productionRate;
-            int budget = Singleton<EconomyManager>.instance.GetBudget(this.m_info.m_class);
-            productionRate = PlayerBuildingAI.GetProductionRate(productionRate, budget);
-            return -(productionRate * this.m_waterConsumption / 100);
-            */
-            return rate;
-        }
-
-        public override int GetGarbageRate(ushort buildingID, ref Building data)
-        {
-            int rate = base.GetGarbageRate(buildingID, ref data);
-            foreach (var module in GarbageModules)
-            {
-                module.GetGarbageRate(ref rate, buildingID, ref data);
-            }
-            /*
-            // PlayerBuildingAI code
-            int productionRate = (int)data.m_productionRate;
-            int budget = Singleton<EconomyManager>.instance.GetBudget(this.m_info.m_class);
-            productionRate = PlayerBuildingAI.GetProductionRate(productionRate, budget);
-            return productionRate * this.m_garbageAccumulation / 100;
-            */
-            return rate;
+            if()
+            electricityConsumption = 0;
+            waterConsumption = 0;
+            sewageAccumulation = 0;
+            garbageAccumulation = 0;
+            incomeAccumulation = 0;
         }
 
         // Fire parameters for size/tolerance set on object & updated via modules. hazard obtained via specific Module
@@ -704,6 +635,20 @@ namespace ModularSkylines
         {
             groundPollution = 0;
             noisePollution = 0;
+        }
+
+
+        //New simulation events
+
+        //This will be called each time the permanent occupants/workers of a location have changed.
+        public void OnOccupantChanged (CoreAI core)
+        {
+
+        }
+        //This will be called each time the current citizens and/or tourists at a location change (workers, shoppers, tourists, residents, etc.)
+        public void OnVisitorChanged (CoreAI core)
+        {
+
         }
 
     }
