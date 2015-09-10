@@ -33,25 +33,26 @@ namespace ModularSkylines
 
     public struct CommonConsumption
     {
-        public CommonConsumption(int electric = 0, int water = 0, int sewage = 0, int garbage = 0)
+        public CommonConsumption(int electric = 0, int water = 0, int sewage = 0, int garbage = 0, int cost = 0, int income = 0)
         {
             electricityConsumption = electric;
             waterConsumption = water;
             sewageAccumulation = sewage;
             garbageAccumulation = garbage;
+            publicCost = cost;
+            publicIncome = income;
         }
+        public int netIncome => publicIncome - publicCost;
         public int electricityConsumption;
         public int waterConsumption;
         public int sewageAccumulation;
         public int garbageAccumulation;
+        public int publicIncome;
+        public int publicCost;
     }
 
-    public class Residents : DataModule<Residents>
-    {
-        public short homeCount = 0;
-    }
-    
-    public class Workers : DataModule<Workers>
+    //Being universal, I might make this a struct...
+    public class Occupants : DataModule<Occupants>
     {
         public void ModifyWorkers(short l0, short l1, short l2, short l3)
         {
@@ -65,48 +66,10 @@ namespace ModularSkylines
         public short m_workPlaceCount1 = 0;
         public short m_workPlaceCount2 = 0;
         public short m_workPlaceCount3 = 0;
+        //public short homeCount = 0;
+        public short maxHomeCount = 0;
+        public short maxVisitors = 0;
     }
 
-    public class Tourists : DataModule<Tourists>
-    {
-        public int totalVisitors => m_visitPlaceCount0 + m_visitPlaceCount1 + m_visitPlaceCount2;
-        public short m_attractivenessAccumulation = 0;
-        public short m_visitPlaceCount0 = 0;
-        public short m_visitPlaceCount1 = 0;
-        public short m_visitPlaceCount2 = 0;
-    }
-
-    public class Education : DataModule<Education>
-    {
-        public byte educationTier = 0;
-        public short m_studentCount = 0;
-        public float m_educationRadius = 0;
-        public short m_educationAccumulation = 0;
-    }
-
-    public class Medical : DataModule<Medical>
-    {
-        public int m_healthCareAccumulation = 0;
-        public float m_healthCareRadius = 0;
-        public int m_ambulanceCount = 0;
-        public int m_patientCapacity = 0;
-        public int m_curingRate = 0;
-    }
-
-    public class WaterFacility : DataModule<WaterFacility>
-    {
-        public int m_waterIntake = 0;
-        public float m_maxWaterDistance = 0;
-        public bool m_useGroundWater = false;
-        public bool useGroundPollution = false;
-        public int m_sewageOutlet = 0;
-        public int m_outletPollution = 0;
-    }
-
-    public class Entertainment : DataModule<Entertainment>
-    {
-        public short m_entertainmentAccumulation = 0;
-        public float m_entertainmentRadius = 0;
-    }
 
 }

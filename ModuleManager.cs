@@ -11,29 +11,10 @@ using ColossalFramework.Packaging;
 
 namespace ModularSkylines
 {
-    public enum BuildingEvents
-    {
-        OnCreateBuilding,
-        OnReleaseBuilding,
-        OnBuildingLoaded,
-        OnBuildingUpgraded,
-        OnBuildingCompleted,
-        OnSimulationStep,
-        OnLevelUpCheck,
-        OnActiveSimulationStep,
-        GetNaturalResourceRate,
-        GetEcconomyResourceRate,
-        GetImmaterialResourceRate,
-        GetElectricRate,
-        GetWaterRate,
-        GetGarbageRate,
-        GetFireParameters,
-        GetColor,
-        CustomModule
-    }
+
     public class ModuleManager : Singleton<ModuleManager>
     {
-        public readonly string assetModuleFileName = "modules.xml";
+        public const string assetModuleFileName = "modules.xml";
 
         public static Dictionary<BuildingEvents, Type> EventMap = new Dictionary<BuildingEvents, Type>
         {
@@ -41,34 +22,10 @@ namespace ModularSkylines
             {BuildingEvents.OnReleaseBuilding, typeof(BuildingDelegate) },
             {BuildingEvents.OnBuildingCompleted, typeof(BuildingDelegate) },
             {BuildingEvents.OnBuildingUpgraded, typeof(BuildingDelegate) },
-            {BuildingEvents.OnBuildingLoaded, typeof(OnBuildingLoaded) },
+            {BuildingEvents.OnBuildingLoaded, typeof(BuildingVersionDelegate) },
             {BuildingEvents.OnSimulationStep, typeof(BuildingDelegate)},
 
         };
-
-        public delegate void BuildingDelegate(ushort building, ref Building data, CoreAI core);
-        public delegate void OnBuildingLoaded(ushort building, ref Building data, uint version, CoreAI core);
-        public delegate void BuildingColor(ushort buildingID, ref Building data, InfoManager.InfoMode infoMode);
-
-        public delegate void SimulationDelegate(
-            ushort building, ref Building data, ref Building.Frame frameData, CoreAI core);
-
-        public struct DelegateData
-        {
-            public Delegate delegateInstance;
-            public Type delegateType;
-            public Type moduleType;
-            public BuildingEvents eventID;
-            public string name => moduleType + "_" + eventID;
-
-            public DelegateData(Delegate del, Type delType, Type module, BuildingEvents ID)
-            {
-                delegateInstance = del;
-                moduleType = module;
-                eventID = ID;
-                delegateType = delType;
-            }
-        }
 
         // Collections for accessing and coordinating the delegates.
         private static List<Type> loadedTypes = new List<Type>();

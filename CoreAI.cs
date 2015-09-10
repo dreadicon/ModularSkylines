@@ -4,7 +4,7 @@ using ColossalFramework.Math;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using ModularSkylines.VanillaModules;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -18,32 +18,40 @@ namespace ModularSkylines
         // Only one method of rendering decoration placement may be used (vanilla is growable vs ploppable)
         public DecorationAI decorationAI;
 
-        public BuildingBehaviorManager.BuildingBehaviors behavior;
+        public BuildingBehaviorManager.BuildingConfig behaviorConfig;
 
-        public FireAI fireAI;
-        public LevelUpAI levelAI;
         public bool playerControlled;
-        public bool baseCosts;
-        private bool isGrowable;
+        public bool isGrowable;
+        //Common cached building simulation information & 'dirty' flag for when state has changed.
         public bool commonConsumptionUpdate;
         public CommonConsumption commonConsumption;
-        public Workers workers;
+        public bool occupantsUpdated;
+        public Occupants occupants;
 
-        //Lists of modules for building based on type of resource they alter/interact with.
-        private List<BuildingModule> BuildingModules;
-        private List<SimulationBuildingModule> SimulationBuildingModules; 
+        //All delegate data sets for building
+        private List<DelegateData> BuildingModules;
 
-        private List<IEconomyResourceModule> EconomyResourceModules;
-        private List<IWaterModule> WaterModules;
-        private List<IElectricModule> ElectricModules;
-        private List<IGarbageModule> GarbageModules;
+        //Simulation Modules
+        private List<SimulationDelegate> OnSimulation;
+        private List<SimulationDelegate> OnActiveSimulation;
+
+        //Building lifecycle modules
+        private BuildingDelegate OnCreateBuilding;
+        private BuildingDelegate OnReleaseBuilding;
+        private BuildingDelegate OnBuildingCompleted;
+        private BuildingDelegate OnBuildingUpgraded;
+        private BuildingVersionDelegate OnBuildingLoaded;
+        private BuildingDelegate OnStartUpgrade;
+        //Note: might not nees this one. Investigate later.
+        //private BuildingDelegate GetUpgradeInfo;
+
+        //Building state update modules
+        private BuildingDelegate OnOccupantsChanged; //NOTE: this may not impact enough be useful, but can't hurt
+        private BuildingDelegate OnDistrictChanged; 
+        private BuildingDelegate OnVisitorsChanged; //NOTE: this may change too often to be a useful.
 
         // Modules which may return a color for the building.
-        private List<IColorModule> ColorModules;
-
-        private Dictionary<NaturalResourceManager.Resource, List<INaturalResourceModule>> NatualResourceMapping;
-        private Dictionary<ImmaterialResourceManager.Resource, List<IImmaterialResourceModule>> ImmaterialResourceMapping;
-        private Dictionary<string, List<BuildingModule>> CustomResourceMapping;
+        private List<BuildingColorDelegate> ColorModules;
 
         //Bag for custom properties.
         //TODO: reworks this as an array lookup system whose keys are generated at runtime from config data.
@@ -58,30 +66,40 @@ namespace ModularSkylines
             return new T();
         }
 
-        public void SetData<T>(T data)
+        public bool TryGetData<T>(out T module) where T : DataModule<T>
+        {
+            object data;
+            if(dataDictionary.TryGetValue(typeof(T).TypeHandle, out data))
+            {
+                module = (T)data;
+                return true;
+            }
+            module = null;
+            return false;
+        }
+
+        public void SetData<T>(T data) where T : DataModule<T>
         {
             dataDictionary[typeof (T).TypeHandle] = data;
         }
 
-        //Player Building AI properties
         //TODO: remove the Attributes and implement own custom UI system
-
-        public MessageInfo m_onCompleteMessage;
-
-        public ManualMilestone m_createPassMilestone;
+        public BuildingBehaviorManager.BuildingConfig behaviors;
+        public Dictionary<short, short[]> behaviorIDLookup;
+        public bool CheckBehavior(short id)
+        {
+            if (behaviorIDLookup.ContainsKey(id)) return true;
+            return false;
+        }
+        public bool CheckBehavior(short id, short sub)
+        {
+            short[] subgroup;
+            if (behaviorIDLookup.TryGetValue(id, out subgroup))
+                if (subgroup.Contains(sub)) return true;
+            return false;
+        }
 
         public int m_fireSize = 127;
-
-        public int m_maxLevel = 1;
-
-        public int m_noiseAccumulation = 0;
-        public int m_noiseRadius = 0;
-
-        [CustomizableProperty("Construction Cost", "Gameplay common")]
-        public int m_constructionCost = 1000;
-
-        [CustomizableProperty("Maintenance Cost", "Gameplay common")]
-        public int m_maintenanceCost = 0;
 
         [CustomizableProperty("Fire Hazard", "Gameplay common")]
         public int m_fireHazard = 1;
@@ -89,16 +107,12 @@ namespace ModularSkylines
         [CustomizableProperty("Fire Tolerance", "Gameplay common")]
         public int m_fireTolerance = 20;
 
-        //Private Building AI properties
-        [CustomizableProperty("Construction Time")]
-        public int m_constructionTime = 30;
-
         //The exact execution of GetColor is handled by a separate class, which this class stores a reference to.
         public override Color GetColor(ushort buildingID, ref Building data, InfoManager.InfoMode infoMode)
         {
             foreach (var module in ColorModules)
             {
-                if (module.GetColor(buildingID, ref data, infoMode, ref color)) return color;
+                module(buildingID, ref data, infoMode, ref color);
             }
             return color;
         }
@@ -168,25 +182,24 @@ namespace ModularSkylines
 
         public override int GetResourceRate(ushort buildingID, ref Building data, ImmaterialResourceManager.Resource resource)
         {
-            if (resource == ImmaterialResourceManager.Resource.NoisePollution) return this.m_noiseAccumulation;
+            if (resource == ImmaterialResourceManager.Resource.NoisePollution) return GetData<Noise>().m_noiseAccumulation;
             return base.GetResourceRate(buildingID, ref data, resource);
         }
 
-
+        //Add module to fiddle with these every time they are referenced (even though I don't think it's beneficial)
         public void GetConsumptionRates(Randomizer r, int productionRate, out int electricityConsumption, out int waterConsumption, out int sewageAccumulation, out int garbageAccumulation, out int incomeAccumulation)
         {
-            if()
-            electricityConsumption = 0;
-            waterConsumption = 0;
-            sewageAccumulation = 0;
-            garbageAccumulation = 0;
-            incomeAccumulation = 0;
+            electricityConsumption = commonConsumption.electricityConsumption;
+            waterConsumption = commonConsumption.waterConsumption;
+            sewageAccumulation = commonConsumption.sewageAccumulation;
+            garbageAccumulation = commonConsumption.garbageAccumulation;
+            incomeAccumulation = commonConsumption.netIncome;
         }
 
-        // Fire parameters for size/tolerance set on object & updated via modules. hazard obtained via specific Module
+        // TODO: add an event to this
         public override bool GetFireParameters(ushort buildingID, ref Building buildingData, out int fireHazard, out int fireSize, out int fireTolerance)
         {
-            fireAI.GetFireHazard(buildingID, ref buildingData, out fireHazard);
+            fireHazard = m_fireHazard;
             fireSize = m_fireSize;
             fireTolerance = m_fireTolerance;
             return this.m_fireHazard != 0;
@@ -195,96 +208,95 @@ namespace ModularSkylines
         public override void InitializePrefab()
         {
             base.InitializePrefab();
-            this.m_createPassMilestone?.SetPrefab(this.m_info);
+            if(playerControlled)
+            {
+                //TODO: implement this properly using modules.
+                GetData<PublicBuilding>().m_createPassMilestone?.SetPrefab(this.m_info);
+            }
         }
 
-        // Allow modules to handle actions for building lifecycle.
         public override void CreateBuilding(ushort buildingID, ref Building data)
         {
             base.CreateBuilding(buildingID, ref data);
-            /*
-            // PrivateBuildingAI code
-            int num;
-            int num2;
-            int num3;
-            int num4;
-            this.CalculateWorkplaceCount(new Randomizer((int)buildingID), data.Width, data.Length, out num, out num2, out num3, out num4);
-            int workCount = num + num2 + num3 + num4;
-            int homeCount = this.CalculateHomeCount(new Randomizer((int)buildingID), data.Width, data.Length);
-            int visitCount = this.CalculateVisitplaceCount(new Randomizer((int)buildingID), data.Width, data.Length);
-            Singleton<CitizenManager>.instance.CreateUnits(out data.m_citizenUnits, ref Singleton<SimulationManager>.instance.m_randomizer, buildingID, 0, homeCount, workCount, visitCount, 0, 0);
-            */
-
+            OnCreateBuilding(buildingID, ref data, this);
             
-            foreach (var module in BuildingModules)
-            {
-                module.OnCreateBuilding(buildingID, ref data, this);
-            }
+            //Note: for now, I am not allowing buildings to have 'passengers' or be vehicles :P
+            Singleton<CitizenManager>.instance.CreateUnits(out data.m_citizenUnits, ref Singleton<SimulationManager>.instance.m_randomizer, buildingID, 0, occupants.maxHomeCount, occupants.totalWorkers, GetData<Tourists>().maxTourists, 0, GetData<Education>().m_studentCount);
         }
 
         public override void BuildingLoaded(ushort buildingID, ref Building data, uint version)
         {
-            /*
-            // PrivateBuildingAI code
-            base.BuildingLoaded(buildingID, ref data, version);
-            int num;
-            int num2;
-            int num3;
-            int num4;
-            this.CalculateWorkplaceCount(new Randomizer((int)buildingID), data.Width, data.Length, out num, out num2, out num3, out num4);
-            int workCount = num + num2 + num3 + num4;
-            int homeCount = this.CalculateHomeCount(new Randomizer((int)buildingID), data.Width, data.Length);
-            int visitCount = this.CalculateVisitplaceCount(new Randomizer((int)buildingID), data.Width, data.Length);
-            
-            */
             base.BuildingLoaded(buildingID, ref data, version);
             
-            foreach (var module in BuildingModules)
-            {
-                module.OnBuildingLoaded(buildingID, ref data, version, this);
-
-            }
-            var citizens = GetData<Citizens>();
+            OnBuildingLoaded(buildingID, ref data, version, this);
             
-            base.EnsureCitizenUnits(buildingID, ref data, citizens.homeCount, citizens.GetWorkers().totalWorkers, citizens.GetTourists().totalVisitors, GetData<Education>().m_studentCount);
-            
+            EnsureCitizenUnits(buildingID, ref data, occupants.maxHomeCount, occupants.totalWorkers, GetData<Tourists>().maxTourists, GetData<Education>().m_studentCount);
                 
-            if(playerControlled)
-                Singleton<BuildingManager>.instance.AddServiceBuilding(buildingID, this.m_info.m_class.m_service);
+            foreach(var service in behaviors.behaviors)
+                Singleton<BuildingManager>.instance.AddServiceBuilding(buildingID, (ItemClass.Service)service.type);
         }
 
         public override void ReleaseBuilding(ushort buildingID, ref Building data)
         {
             base.ReleaseBuilding(buildingID, ref data);
-            foreach (var module in BuildingModules)
-            {
-                module.OnReleaseBuilding(buildingID, ref data, this);
-            }
+            OnReleaseBuilding(buildingID, ref data, this);
         }
 
         protected override void BuildingCompleted(ushort buildingID, ref Building buildingData)
         {
             base.BuildingCompleted(buildingID, ref buildingData);
-            foreach (var module in BuildingModules)
+            OnBuildingCompleted(buildingID, ref buildingData, this);
+            
+            // TODO: replace onCompleteMessage with module, allow for extension maybe. 
+            PublicBuilding publicData;
+            if(TryGetData<PublicBuilding>(out publicData))
+                Singleton<MessageManager>.instance.TryCreateMessage(publicData.m_onCompleteMessage, Singleton<MessageManager>.instance.GetRandomResidentID());
+        }
+
+
+
+        public override void BuildingUpgraded(ushort buildingID, ref Building data)
+        {
+            if (isGrowable)
             {
-                module.OnBuildingCompleted(buildingID, ref buildingData, this);
+                OnBuildingUpgraded(buildingID, ref data, this);
             }
-            // PlayerBuildingAI code
-            //Singleton<MessageManager>.instance.TryCreateMessage(this.m_onCompleteMessage, Singleton<MessageManager>.instance.GetRandomResidentID());
+
+            base.EnsureCitizenUnits(buildingID, ref data, occupants.maxHomeCount, occupants.totalWorkers, GetData<Tourists>().maxTourists, GetData<Education>().m_studentCount);
         }
 
         protected override int GetConstructionTime()
         {
-            return this.m_constructionTime;
+            return GetData<Growth>().m_constructionTime;
+        }
+
+        // Logic for Get method moved to dedicated LevelAI class.
+        public override BuildingInfo GetUpgradeInfo(ushort buildingID, ref Building data)
+        {
+            if (isGrowable)
+            {
+                Randomizer randomizer = new Randomizer((int)buildingID);
+                ItemClass.Level level = this.m_info.m_class.m_level + 1;
+                return Singleton<BuildingManager>.instance.GetRandomBuildingInfo(ref randomizer, this.m_info.m_class.m_service, this.m_info.m_class.m_subService, level, data.Width, data.Length, this.m_info.m_zoningMode);
+            }
+                
+            return null;
+        }
+
+        //as above
+        protected void StartUpgrading(ushort buildingID, ref Building buildingData)
+        {
+            if (OnStartUpgrade != null && isGrowable)
+                OnStartUpgrade(buildingID, ref buildingData, this);
         }
 
         public override void SimulationStep(ushort buildingID, ref Building buildingData, ref Building.Frame frameData)
         {
             base.SimulationStep(buildingID, ref buildingData, ref frameData);
 
-            foreach (var module in SimulationBuildingModules)
+            foreach (var module in OnSimulation)
             {
-                module.OnSimulationStep(buildingID, ref buildingData, ref frameData);
+                module(buildingID, ref buildingData, ref frameData, this);
             }
 
             //PrivateBuildingAI code
@@ -433,9 +445,9 @@ namespace ModularSkylines
         {
             base.SimulationStepActive(buildingID, ref buildingData, ref frameData);
 
-            foreach (var module in SimulationBuildingModules)
+            foreach (var module in OnActiveSimulation)
             {
-                module.OnActiveSimulationStep(buildingID, ref buildingData, ref frameData);
+                module(buildingID, ref buildingData, ref frameData, this);
             }
             // PrivateBuildingAI code
             /*
@@ -472,7 +484,11 @@ namespace ModularSkylines
             int num2;
             int num3;
             int num4;
-            this.CalculateWorkplaceCount(new Randomizer((int)buildingID), buildingData.Width, buildingData.Length, out num, out num2, out num3, out num4);
+            //this.CalculateWorkplaceCount(new Randomizer((int)buildingID), buildingData.Width, buildingData.Length, out num, out num2, out num3, out num4);
+            num = this.occupants.m_workPlaceCount0;
+            num2 = this.occupants.m_workPlaceCount1;
+            num3 = this.occupants.m_workPlaceCount2;
+            num4 = this.occupants.m_workPlaceCount3;
             workPlaceCount = num + num2 + num3 + num4;
             if (buildingData.m_fireIntensity == 0)
             {
@@ -518,47 +534,6 @@ namespace ModularSkylines
             return Mathf.Max(1, b);
         }
 
-        // Logic for Get method moved to dedicated LevelAI class.
-        public override BuildingInfo GetUpgradeInfo(ushort buildingID, ref Building data)
-        {
-            if (m_maxLevel != -1)
-                return levelAI.GetUpgradeInfo(buildingID, ref data, this.m_info);
-            return null;
-        }
-
-        public override void BuildingUpgraded(ushort buildingID, ref Building data)
-        {
-            if (m_maxLevel != -1)
-            {
-                foreach (var module in BuildingModules)
-                {
-                    module.OnBuildingUpgraded(buildingID, ref data, this);
-                }
-            }
-            /*
-            int num;
-            int num2;
-            int num3;
-            int num4;
-            this.CalculateWorkplaceCount(new Randomizer((int)buildingID), data.Width, data.Length, out num, out num2, out num3, out num4);
-            int workCount = num + num2 + num3 + num4;
-            int homeCount = this.CalculateHomeCount(new Randomizer((int)buildingID), data.Width, data.Length);
-            int visitCount = this.CalculateVisitplaceCount(new Randomizer((int)buildingID), data.Width, data.Length);
-            */
-            var citizens = GetData<Citizens>();
-
-            base.EnsureCitizenUnits(buildingID, ref data, citizens.homeCount, citizens.GetWorkers().totalWorkers, citizens.GetTourists().totalVisitors, GetData<Education>().m_studentCount);
-        }
-
-        //as above
-        protected void StartUpgrading(ushort buildingID, ref Building buildingData)
-        {
-            if (levelAI != null && m_maxLevel != -1)
-                levelAI.LevelUpStart(buildingID, ref buildingData, this.m_info);
-            
-
-        }
-
         //added conditional so as to confine ranges only for growables.
         public override void GetWidthRange(out int minWidth, out int maxWidth)
         {
@@ -597,40 +572,6 @@ namespace ModularSkylines
             decorationAI.GetDecorationDirections(out negX, out posX, out negZ, out posZ, this.m_info);
         }
 
-        //Not sure I need these....
-        //Definitely don't need these inside this class. they belong inside modules.
-        public virtual int CalculateHomeCount(Randomizer r, int width, int length)
-        {
-            return 0;
-        }
-
-        public virtual int CalculateVisitplaceCount(Randomizer r, int width, int length)
-        {
-            return 0;
-        }
-
-        public virtual void CalculateWorkplaceCount(Randomizer r, int width, int length, out int level0, out int level1, out int level2, out int level3)
-        {
-            level0 = 0;
-            level1 = 0;
-            level2 = 0;
-            level3 = 0;
-        }
-
-        public virtual int CalculateProductionCapacity(Randomizer r, int width, int length)
-        {
-            return 0;
-        }
-
-        public virtual void GetConsumptionRates(Randomizer r, int productionRate, out int electricityConsumption, out int waterConsumption, out int sewageAccumulation, out int garbageAccumulation, out int incomeAccumulation)
-        {
-            electricityConsumption = 0;
-            waterConsumption = 0;
-            sewageAccumulation = 0;
-            garbageAccumulation = 0;
-            incomeAccumulation = 0;
-        }
-
         public virtual void GetPollutionRates(int productionRate, out int groundPollution, out int noisePollution)
         {
             groundPollution = 0;
@@ -641,12 +582,12 @@ namespace ModularSkylines
         //New simulation events
 
         //This will be called each time the permanent occupants/workers of a location have changed.
-        public void OnOccupantChanged (CoreAI core)
+        public void OnOccupantChanged ()
         {
 
         }
         //This will be called each time the current citizens and/or tourists at a location change (workers, shoppers, tourists, residents, etc.)
-        public void OnVisitorChanged (CoreAI core)
+        public void OnVisitorChanged ()
         {
 
         }
