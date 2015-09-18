@@ -11,121 +11,52 @@ using System.Reflection;
 
 namespace ModularSkylines
 {
+    public class InitializationBehaviorArchtype : InitializationBehavior
+    {
+        public InitializationBehavior[] subtypes;
+    }
+    public class InitializationBehavior
+    {
+        public string name;
+        public byte maxDensity;
+        public byte maxLevel;
+    }
+    //This is the serialized data set, containing all info needed to define a building
+    public struct InitializeBuildingConfig
+    {
+        //Name of the configuration
+        public string name;
+        //Alternative names. each time the building's config is renamed, it's old name is added to the aliases.
+        //Note sure yet how to handle duplicates...might hook into the steam ID?
+        public string[] aliases;
+        public BehaviorType primary;
+        public BehaviorType[] types;
+        public bool playerControlled;
+        public DataModuleBase[] moduleStartValues;
+    }
 
+    //Serialized class mapping an asset to a building config. 
+    public class InitializeBuildingAsset
+    {
+        public string assetName;
+        public string buildingConfigName;
+    }
     public class BuildingBehaviorManager
     {
         public const string BehaviorDefinitionFile = "Behaviors.xml";
         public const string CachedDefinitionFile = "BehaviorsCache.xml";
-        public const string VanillaDensity1Ending = "Low";
-        public const string VanillaDensity2Ending = "High";
-        public const byte VanillaDensity1 = 1;
-        public const byte VanillaDensity2 = 2;
-
-        /// <summary>
-        /// Struct which defines behaviors of a given asset once loaded, and for saving purposes.
-        /// If multiple subtype/densities are desired, declare multiple cases of the BuildingBehavior.
-        /// The first 128 types and 64 subtype values are reserved for now, for both vanilla type/subtype use and for potentially common
-        /// mod usage. See documentation for current assignment. Note that for each custom type, all 256 subtypes are available.
-        /// -'type' denotes the building's functionality type, i.e. residential, commercial, education, medical, garbage, etc.
-        /// -'density' denotes the density, if applicable, for the given type
-        /// -'subtype' is the subtype of a given type, i.e. farming, oil, highschool, etc.
-        /// </summary>
-        public class BuildingConfig
-        {
-            public BuildingBehavior[] behaviors;
-            public BuildingBehavior primaryBehavior;
-            public bool playerControlled;
-            public byte maxLevel => primaryBehavior.maxLevel;
-            public byte density => primaryBehavior.density;
-        }
-        public struct BuildingBehavior
-        {
-            public byte type;
-            public byte density;
-            public byte subtype;
-            public byte maxLevel;
-            public bool useAutogen;
-        }
 
         // Used to declare a given behavior type. Reference data only.
-        public struct BuildingBehaviorType
-        {
-            public string name;
-            public byte type;
-            public byte defaultMaxDensity;
-            public byte defaultMaxLevel;
-            public Subtype[] subtypes;
-            public string[] defaultDataModules;
-        }
 
-        public struct Subtype
-        {
-            public string name;
-            public byte type;
-            public byte maxDensity;
-            public byte maxLevel;
-            public string[] defaultDataModules;
-        }
 
-        public static Dictionary<ItemClass.Service, byte> vanillaServiceMapping = new Dictionary<ItemClass.Service, byte>();
-        public static Dictionary<ItemClass.SubService, byte> vanillaSubserviceMapping = new Dictionary<ItemClass.SubService, byte>();
-        public static List<BuildingBehaviorType> behaviors = new List<BuildingBehaviorType>();
+        public static List<InitializationBehaviorType> behaviors = new List<InitializationBehaviorType>();
         public static Dictionary<string, byte> getBehaviorIDByName = new Dictionary<string, byte> {};
         
         public static void InitializeTypeMap()
         {
-            XmlSerializer xmlSerializer = new XmlSerializer(typeof(List<BuildingBehaviorType>));
+            XmlSerializer xmlSerializer = new XmlSerializer(typeof(List<InitializationBehaviorType>));
 
-            byte behaviorTypeCount = 0; //Note this is 0-indexed
-
-            //Handle vanilla types, creating appropriate behavior for each.
-            Type vanillaServiceType = typeof(ItemClass.Service);
-            Type vanillaSubserviceType = typeof(ItemClass.SubService);
-
-            SortedDictionary<int, string> serviceDict = new SortedDictionary<int, string> (Tools.EnumToDictionary<ItemClass.Service>());
-            var subServiceDict = Tools.EnumToDictionary<ItemClass.SubService>();
-            
-
-            foreach (var entry in serviceDict)
-            {
-                List<Subtype> subtypes = new List<Subtype>();
-                var behavior = new BuildingBehaviorType();
-                behavior.defaultMaxDensity = 0;
-                behavior.defaultMaxLevel = VanillaData.GetMaxLevel((ItemClass.Service)entry.Key);
-                behavior.name = entry.Value;
-                behavior.type = behaviorTypeCount;
-                behavior.defaultDataModules = VanillaData.VanillaServicesData[(ItemClass.Service)entry.Key];
-                foreach(var pair in subServiceDict)
-                {
-                    if(pair.Value.StartsWith(entry.Value))
-                    {
-                        // Handle vanilla density levels, which are currently exclusive of subservice types, so they go under default for services
-                        if (pair.Value.EndsWith(VanillaDensity1Ending)) behavior.defaultMaxDensity = VanillaDensity1;
-                        else if (pair.Value.EndsWith(VanillaDensity2Ending)) behavior.defaultMaxDensity = VanillaDensity2;
-                        else
-                        {
-                            var subtype = new Subtype();
-
-                            if (pair.Key == (int)ItemClass.SubService.IndustrialGeneric)
-                                subtype.maxLevel = VanillaData.GenericIndustryMaxLevel - 1;
-                            else
-                                subtype.maxLevel = behavior.defaultMaxLevel;
-
-                            subtype.maxDensity = behavior.defaultMaxDensity;
-                            subtype.name = pair.Value;
-                            subtype.defaultDataModules = behavior.defaultDataModules.Concat(VanillaData.VanillaSubservicesData[(ItemClass.SubService)pair.Key]).ToArray();
-                            subtype.type = (byte)subtypes.Count;
-                            subtypes.Add(subtype);
-                            vanillaSubserviceMapping[(ItemClass.SubService)entry.Key] = (byte)subtypes.Count;
-                        }
-                    }
-                }
-                behavior.subtypes = subtypes.ToArray();
-                behaviors.Insert(behaviorTypeCount, behavior);
-                getBehaviorIDByName[behavior.name] = behaviorTypeCount;
-                vanillaServiceMapping[(ItemClass.Service)entry.Key] = behaviorTypeCount;
-                behaviorTypeCount++;
-            }
+            VanillaData.InitializeVanillaBehaviors();
 
             string corePath = Path.Combine(DataLocation.modsPath, MethodBase.GetCurrentMethod().DeclaringType.Namespace);
             string cachePath = Path.Combine(corePath, CachedDefinitionFile);
@@ -135,12 +66,12 @@ namespace ModularSkylines
                 modPath = Path.Combine(modPath, BehaviorDefinitionFile);
                 if(File.Exists(modPath))
                 {
-                    List<BuildingBehaviorType> result;
+                    List<InitializationBehaviorType> result;
                     try
                     {
                         using (StreamReader reader = new StreamReader(modPath))
                         {
-                            result = (List<BuildingBehaviorType>)xmlSerializer.Deserialize(reader);
+                            result = (List<InitializationBehaviorType>)xmlSerializer.Deserialize(reader);
                         }
                         if(result != null)
                         {
@@ -152,7 +83,7 @@ namespace ModularSkylines
                                 if (getBehaviorIDByName.TryGetValue(behavior.name, out behaviorID))
                                 {
                                     var existingBehavior = behaviors[behaviorID];
-                                    var updatedSubtypes = new List<Subtype>(existingBehavior.subtypes);
+                                    var updatedSubtypes = new List<InitializationSubtype>(existingBehavior.subtypes);
                                     foreach(var newSubtype in behavior.subtypes)
                                     {
                                         bool subtypeExists = false;
@@ -170,7 +101,7 @@ namespace ModularSkylines
                                             updatedSubtypes.Insert(mutableCopy.type, mutableCopy);
                                         }
                                     }
-                                    existingBehavior.subtypes = updatedSubtypes.ToArray<Subtype>();
+                                    existingBehavior.subtypes = updatedSubtypes.ToArray<InitializationSubtype>();
                                     behaviors[behaviorID] = existingBehavior;
                                 }
                                 else
@@ -206,11 +137,24 @@ namespace ModularSkylines
 
     }
 
-
+    [AttributeUsage(AttributeTargets.Class)]
     public class BuildingBehaviorAttribute : Attribute
     {
-        
+        public string verboseName = "";
     }
+
+    public class EventDelegateAttribute : Attribute
+    {
+        public BuildingEvents eventID;
+    }
+
+    public class DataModuleEventAttribute : Attribute
+    {
+        public Type type;
+        public 
+    }
+
+    
 
 
 }

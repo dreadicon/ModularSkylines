@@ -27,12 +27,44 @@ namespace ModularSkylines
 
         };
 
+        public abstract class Module
+        {
+            public readonly string ModuleName;
+            public readonly string ModuleVerboseName;
+            public readonly Type defaultBehavior;
+            public readonly List<Type> defaultDataModules;
+        }
+        public class Residential : Module { }
+        public class ResidentialLow : Residential { }
+        public class ResidentialHigh : Residential { }
+        public class Industrial : Module { }
+        public class IndustrialForestry : Industrial { }
+        public class IndustrialFarming : Industrial { }
+        public class IndustrialOil : Industrial { }
+        public class IndustrialOre : Industrial { }
+        public class IndustrialGeneric : Industrial { }
+        public class Commercial : Module { }
+        public class CommercialLow : Commercial { }
+        public class CommercialHigh : Commercial { }
+        public class FireDepartment : Module { }
+        public class HealthCare : Module { }
+        public class Education : Module { }
+        public class Water : Module { }
+        public class Electricity : Module { }
+        public class Office : Module { }
+        public class Garbage : Module { }
+        public class PoliceDepartment : Module { }
+        public class Monument : Module { }
+        public class GovernmentTransport : Module { }
+
+
         // Collections for accessing and coordinating the delegates.
         private static List<Type> loadedTypes = new List<Type>();
         private List<DelegateData> delegates;
         public Dictionary<BuildingEvents, List<DelegateData>> delegateEventMapping;
         public Dictionary<string, DelegateData> delegateNameDictionary;
         public Dictionary<string, DelegateData> defaultDelegates;
+        public Dictionary<string, BuildingDelegate>
 
         /// <summary>
         /// Method for adding a delegate to the collection. 
@@ -41,7 +73,6 @@ namespace ModularSkylines
         /// <param name="eventInfo">MethodInfo for the method to be invoked by the delegate</param>
         public void AddDelegate(Type type, MethodInfo eventInfo)
         {
-            
             if (delegateNameDictionary.ContainsKey(type + "_" + eventInfo.Name))
             {
                 Debug.Log("Warning: tried to add event delegate " + eventInfo.Name + " for module " + type + ", but an entry already exists!");
@@ -115,6 +146,8 @@ namespace ModularSkylines
             }
 
         }
+
+
 
         public void CreateOrOverwriteAssetConfig(Package.Asset asset)
         {

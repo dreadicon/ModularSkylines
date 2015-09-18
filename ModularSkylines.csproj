@@ -52,6 +52,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BuildingBehavior.cs" />
     <Compile Include="BuildingBehaviorManager.cs" />
     <Compile Include="CoreAI.cs" />
     <Compile Include="DataManagment.cs" />
@@ -64,7 +65,6 @@
     <Compile Include="VanillaModules\VanillaDataModules.cs" />
     <Compile Include="VanillaModules\VanillaPrivateBuildingInitialize.cs" />
   </ItemGroup>
-  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

@@ -11,14 +11,14 @@ using UnityEngine;
 namespace ModularSkylines
 {
     //TODO: rework simulation ticking to only recalculate consumption/use values every few ticks or on state change.
-    public class CoreAI : CommonBuildingAI
+    public sealed class CoreAI : CommonBuildingAI
     {
         // Last known building color
         public Color color;
         // Only one method of rendering decoration placement may be used (vanilla is growable vs ploppable)
         public DecorationAI decorationAI;
 
-        public BuildingBehaviorManager.BuildingConfig behaviorConfig;
+        public BuildingConfig behaviorConfig;
 
         public bool playerControlled;
         public bool isGrowable;
@@ -56,11 +56,11 @@ namespace ModularSkylines
         //Bag for custom properties.
         //TODO: reworks this as an array lookup system whose keys are generated at runtime from config data.
         //Note: I used RuntimeTypeHandle as typeof(T).TypeHandle is substantially faster than just typeof(T)
-        private Dictionary<RuntimeTypeHandle, object> dataDictionary;
+        private Dictionary<RuntimeTypeHandle, DataModule> dataDictionary;
 
         public T GetData<T>() where T : DataModule<T>, new()
         {
-            object data;
+            DataModule data;
             if(dataDictionary.TryGetValue(typeof(T).TypeHandle, out data))
                 return (T)data;
             return new T();
@@ -68,7 +68,7 @@ namespace ModularSkylines
 
         public bool TryGetData<T>(out T module) where T : DataModule<T>
         {
-            object data;
+            DataModule data;
             if(dataDictionary.TryGetValue(typeof(T).TypeHandle, out data))
             {
                 module = (T)data;
@@ -80,11 +80,35 @@ namespace ModularSkylines
 
         public void SetData<T>(T data) where T : DataModule<T>
         {
+            data.DataAltered = true;
             dataDictionary[typeof (T).TypeHandle] = data;
         }
 
+        //This is an alternate Get method for the data bag which invokes associated delegates. Useful for lazy computation.
+        //Might later rework this somehow to, rather than have fixed invokes per module, allow other modules to mark
+        //other modules whose values are dependent on them as such.
+        private Dictionary<RuntimeTypeHandle, object> lazyGetInvoke;
+        public T GetDataEvent<T>() where T : DataModule<T>, new()
+        {
+            T data;
+            if(TryGetData<T>(out data))
+            {
+                if(data.DataAltered)
+                {
+                    object delObj;
+                    if (lazyGetInvoke.TryGetValue(typeof(T).TypeHandle, out delObj))
+                    {
+                        var del = (DataModuleEvent<T>)delObj;
+                        data.DataAltered = false;
+                        del(this, data);
+                    }
+                }
+                return data;   
+            }
+            return new T();
+        }
+
         //TODO: remove the Attributes and implement own custom UI system
-        public BuildingBehaviorManager.BuildingConfig behaviors;
         public Dictionary<short, short[]> behaviorIDLookup;
         public bool CheckBehavior(short id)
         {
@@ -166,12 +190,12 @@ namespace ModularSkylines
             return this.GetLocalizedStatusActive(buildingID, ref data);
         }
 
-        protected virtual string GetLocalizedStatusInactive(ushort buildingID, ref Building data)
+        private string GetLocalizedStatusInactive(ushort buildingID, ref Building data)
         {
             return Locale.Get("BUILDING_STATUS_NOT_OPERATING");
         }
 
-        protected virtual string GetLocalizedStatusActive(ushort buildingID, ref Building data)
+        private string GetLocalizedStatusActive(ushort buildingID, ref Building data)
         {
             if ((data.m_flags & Building.Flags.RateReduced) != Building.Flags.None)
             {
@@ -219,7 +243,11 @@ namespace ModularSkylines
         {
             base.CreateBuilding(buildingID, ref data);
             OnCreateBuilding(buildingID, ref data, this);
-            
+
+            //WARNING: this could break things if a non-standard service type is used, as the manager initializes the array to 12 elements with no safe expansion.
+            //TODO: either fix the manager, or handle this outside vanilla manager.
+            foreach (var service in behaviorConfig.GetUniqueTypes())
+                Singleton<BuildingManager>.instance.AddServiceBuilding(buildingID, (ItemClass.Service)service);
             //Note: for now, I am not allowing buildings to have 'passengers' or be vehicles :P
             Singleton<CitizenManager>.instance.CreateUnits(out data.m_citizenUnits, ref Singleton<SimulationManager>.instance.m_randomizer, buildingID, 0, occupants.maxHomeCount, occupants.totalWorkers, GetData<Tourists>().maxTourists, 0, GetData<Education>().m_studentCount);
         }
@@ -231,15 +259,19 @@ namespace ModularSkylines
             OnBuildingLoaded(buildingID, ref data, version, this);
             
             EnsureCitizenUnits(buildingID, ref data, occupants.maxHomeCount, occupants.totalWorkers, GetData<Tourists>().maxTourists, GetData<Education>().m_studentCount);
-                
-            foreach(var service in behaviors.behaviors)
-                Singleton<BuildingManager>.instance.AddServiceBuilding(buildingID, (ItemClass.Service)service.type);
+            
+            //WARNING: see CreateBuilding comments for details on potential problems with this
+            foreach(var service in behaviorConfig.GetUniqueTypes())
+                Singleton<BuildingManager>.instance.AddServiceBuilding(buildingID, (ItemClass.Service)service);
         }
 
         public override void ReleaseBuilding(ushort buildingID, ref Building data)
         {
-            base.ReleaseBuilding(buildingID, ref data);
             OnReleaseBuilding(buildingID, ref data, this);
+            //WARNING: see CreateBuilding comments for details on potential problems with this
+            foreach (var service in behaviorConfig.GetUniqueTypes())
+                Singleton<BuildingManager>.instance.RemoveServiceBuilding(buildingID, (ItemClass.Service)service);
+            base.ReleaseBuilding(buildingID, ref data);
         }
 
         protected override void BuildingCompleted(ushort buildingID, ref Building buildingData)
@@ -270,7 +302,7 @@ namespace ModularSkylines
             return GetData<Growth>().m_constructionTime;
         }
 
-        // Logic for Get method moved to dedicated LevelAI class.
+        // TODO: add extensibility
         public override BuildingInfo GetUpgradeInfo(ushort buildingID, ref Building data)
         {
             if (isGrowable)
@@ -283,7 +315,7 @@ namespace ModularSkylines
             return null;
         }
 
-        //as above
+        // TODO: this needs a module and/or some code.
         protected void StartUpgrading(ushort buildingID, ref Building buildingData)
         {
             if (OnStartUpgrade != null && isGrowable)
@@ -535,6 +567,7 @@ namespace ModularSkylines
         }
 
         //added conditional so as to confine ranges only for growables.
+        //TODO: make this configurable in some fashion, esp. for growables.
         public override void GetWidthRange(out int minWidth, out int maxWidth)
         {
             if (!playerControlled)
@@ -572,11 +605,14 @@ namespace ModularSkylines
             decorationAI.GetDecorationDirections(out negX, out posX, out negZ, out posZ, this.m_info);
         }
 
-        public virtual void GetPollutionRates(int productionRate, out int groundPollution, out int noisePollution)
+        //TODO: set this up as a lazy get.
+        public void GetPollutionRates(int productionRate, out int groundPollution, out int noisePollution)
         {
             groundPollution = 0;
             noisePollution = 0;
         }
+
+
 
 
         //New simulation events

@@ -9,19 +9,14 @@ namespace ModularSkylines.VanillaModules
     public static class VanillaData
     {
         public const int MaxSubServiceEnum = 17;
-        public const int OfficeSubservice = 32;
         public const byte OfficeMaxLevel = 3;
         public const byte GenericIndustryMaxLevel = 3;
         public const byte ResidentialMaxLevel = 5;
         public const byte CommercialMaxLevel = 3;
-
-        public enum Density
-        {
-            none = 0,
-            light = 1,
-            medium = 2,
-            heavy = 3
-        }
+        public const string VanillaDensity1Ending = "Low";
+        public const string VanillaDensity2Ending = "High";
+        public const byte VanillaDensity1 = 1;
+        public const byte VanillaDensity2 = 2;
 
         public static byte GetMaxLevel(ItemClass.Service service)
         {
@@ -42,6 +37,9 @@ namespace ModularSkylines.VanillaModules
             }
             return 0;
         }
+
+        public static Dictionary<ItemClass.Service, byte> vanillaServiceMapping = new Dictionary<ItemClass.Service, byte>();
+        public static Dictionary<ItemClass.SubService, byte> vanillaSubserviceMapping = new Dictionary<ItemClass.SubService, byte>();
 
         public static Dictionary<ItemClass.Service, string[]> VanillaServicesData = new Dictionary<ItemClass.Service, string[]>
         {
@@ -82,20 +80,6 @@ namespace ModularSkylines.VanillaModules
             { ItemClass.SubService.PublicTransportTrain, new string[0] { }},
         };
 
-        public static Dictionary<ItemClass.SubService, int> VanillaSubserviceMapping = new Dictionary<ItemClass.SubService, int>
-        {
-            { ItemClass.SubService.CommercialLow, (int)Density.light},
-            { ItemClass.SubService.CommercialHigh, (int)Density.heavy },
-            { ItemClass.SubService.ResidentialLow, (int)Density.light },
-            { ItemClass.SubService.ResidentialHigh, (int)Density.heavy },
-            { ItemClass.SubService.None, (int)Density.none },
-            { ItemClass.SubService.IndustrialGeneric, (int)Density.none },
-            { ItemClass.SubService.IndustrialForestry, (int)Density.none },
-            { ItemClass.SubService.IndustrialFarming, (int)Density.none },
-            { ItemClass.SubService.IndustrialOil, (int)Density.none },
-            { ItemClass.SubService.IndustrialOre, (int)Density.none }
-        };
-
         public static Dictionary<ItemClass.SubService, ItemClass.Service> vanillaServiceCorralation = new Dictionary<ItemClass.SubService, ItemClass.Service>
         {
             { ItemClass.SubService.ResidentialLow, ItemClass.Service.Residential},
@@ -124,14 +108,14 @@ namespace ModularSkylines.VanillaModules
                     new short[5] { 100, 5, 15, 30, 50 },
                     new short[5] { 100, 5, 15, 30, 50 }
             }},
-            {(int)ItemClass.SubService.CommercialLow, new short[5][] {
+            {(int)ItemClass.SubService.CommercialHigh, new short[5][] {
                     new short[5] {75, 0, 40, 50, 10},
                     new short[5] { 100, 0, 20, 50, 30 },
                     new short[5] { 125, 0, 0, 40, 60 },
                     new short[5] { 125, 0, 0, 40, 60 },
                     new short[5] { 125, 0, 0, 40, 60 }
             }},
-            {OfficeSubservice, new short[5][] {
+            {(int)ItemClass.SubService.None, new short[5][] {
                     new short[5] {50, 0, 40, 50, 10},
                     new short[5] { 110, 0, 20, 50, 30 },
                     new short[5] { 170, 0, 0, 40, 60 },
@@ -162,5 +146,59 @@ namespace ModularSkylines.VanillaModules
             {(int)ItemClass.SubService.CommercialLow, new short[5] {90, 100, 110, 110, 110} },
             {(int)ItemClass.SubService.CommercialHigh, new short[5] {200, 300, 400, 400, 400}}
         };
+
+        public static void InitializeVanillaBehaviors()
+        {
+            byte behaviorTypeCount = 0; //Note this is 0-indexed
+
+            //Handle vanilla types, creating appropriate behavior for each.
+            Type vanillaServiceType = typeof(ItemClass.Service);
+            Type vanillaSubserviceType = typeof(ItemClass.SubService);
+
+            SortedDictionary<int, string> serviceDict = new SortedDictionary<int, string>(Tools.EnumToDictionary<ItemClass.Service>());
+            var subServiceDict = Tools.EnumToDictionary<ItemClass.SubService>();
+
+
+            foreach (var entry in serviceDict)
+            {
+                List<BuildingBehaviorManager.Subtype> subtypes = new List<BuildingBehaviorManager.Subtype>();
+                var behavior = new BuildingBehaviorManager.BehaviorType();
+                behavior.defaultMaxDensity = 0;
+                behavior.defaultMaxLevel = GetMaxLevel((ItemClass.Service)entry.Key);
+                behavior.name = entry.Value;
+                behavior.type = behaviorTypeCount;
+                behavior.defaultDataModules = VanillaServicesData[(ItemClass.Service)entry.Key];
+                foreach (var pair in subServiceDict)
+                {
+                    if (pair.Value.StartsWith(entry.Value))
+                    {
+                        // Handle vanilla density levels, which are currently exclusive of subservice types, so they go under default for services
+                        if (pair.Value.EndsWith(VanillaDensity1Ending)) behavior.defaultMaxDensity = VanillaDensity1;
+                        else if (pair.Value.EndsWith(VanillaDensity2Ending)) behavior.defaultMaxDensity = VanillaDensity2;
+                        else
+                        {
+                            var subtype = new BuildingBehaviorManager.Subtype();
+
+                            if (pair.Key == (int)ItemClass.SubService.IndustrialGeneric)
+                                subtype.maxLevel = GenericIndustryMaxLevel - 1;
+                            else
+                                subtype.maxLevel = behavior.defaultMaxLevel;
+
+                            subtype.maxDensity = behavior.defaultMaxDensity;
+                            subtype.name = pair.Value;
+                            subtype.defaultDataModules = behavior.defaultDataModules.Concat(VanillaSubservicesData[(ItemClass.SubService)pair.Key]).ToArray();
+                            subtype.type = (byte)subtypes.Count;
+                            subtypes.Add(subtype);
+                            vanillaSubserviceMapping[(ItemClass.SubService)entry.Key] = (byte)subtypes.Count;
+                        }
+                    }
+                }
+                behavior.subtypes = subtypes.ToArray();
+                BuildingBehaviorManager.behaviors.Insert(behaviorTypeCount, behavior);
+                BuildingBehaviorManager.getBehaviorIDByName[behavior.name] = behaviorTypeCount;
+                vanillaServiceMapping[(ItemClass.Service)entry.Key] = behaviorTypeCount;
+                behaviorTypeCount++;
+            }
+        }
     }
 }

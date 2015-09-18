@@ -16,15 +16,25 @@ namespace ModularSkylines.VanillaModules
         [BuildingModule]
         public static class VanillaBuildingInitialize
         {
+            public static void SetCitizenCounts(ushort buildingID, ref Building data, CoreAI core)
+            {
+                foreach(var behavior in core.behaviorConfig.behaviors)
+                {
+                    
+                }
+                int subservice;
+                if (core.behaviorConfig.hasBehavior(VanillaData.vanillaServiceMapping[ItemClass.Service.Office])) subservice = VanillaData.OfficeSubservice;
+                else subservice = (int)@class.m_subService;
+            }
+
+            
+
             //Used to initialize a building's worker count. Vanilla function converted to be universal and compact.
-            public static void SetWorkers(ushort buildingID, ref Building data, CoreAI core)
+            public static void AutoSetWorkers(ushort buildingID, ref Building data, Occupants occupants, short[] workersConfig)
             {
                 short[][] config;
 
-                ItemClass @class = core.m_info.m_class;
-                int subservice;
-                if (@class.m_service == ItemClass.Service.Office) subservice = VanillaData.OfficeSubservice;
-                else subservice = (int)@class.m_subService;
+
 
                 if (VanillaData.LevelAutogenWorkers.TryGetValue(subservice, out config))
                 {
@@ -66,7 +76,7 @@ namespace ModularSkylines.VanillaModules
                 }
             }
 
-            public static void SetHomes(ushort buildingID, ref Building data, CoreAI core)
+            public static void AutoSetHomes(ushort buildingID, ref Building data, CoreAI core)
             {
                 short[] config;
 
@@ -84,7 +94,7 @@ namespace ModularSkylines.VanillaModules
                 }
             }
 
-            public static void SetVisitors(ushort buildingID, ref Building data, CoreAI core)
+            public static void AutoSetVisitors(ushort buildingID, ref Building data, CoreAI core)
             {
                 short[] config;
                 ItemClass @class = core.m_info.m_class;

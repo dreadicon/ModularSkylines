@@ -6,10 +6,52 @@ using System.Threading.Tasks;
 
 namespace ModularSkylines
 {
-    public abstract class DataModule<T>
+
+    public abstract class DataModule
+    {
+        public bool DataAltered = false;
+        public abstract void GetDataEvent(CoreAI core);
+        public T Initialize<T>(string module, CoreAI core, DataModuleEvent<T> mEvent = null, bool usePresetEvent = true, bool usePresetData = true) where T : DataModule<T>, new()
+        {
+            DataModule<T>.Preset preset;
+            if (DataModule<T>.DataPreset.TryGetValue(module, out preset))
+            {
+                T newInstance = (usePresetData) ? (T)preset.Data.MemberwiseClone() : new T();
+                if(usePresetEvent) preset.OnInitialize(core, newInstance);
+                if (mEvent != null) mEvent(core, newInstance);
+                return newInstance;
+            }
+            return new T();
+        }
+        //TODO: add proper load functionality to this, so it loads the module rather than re-initializing it.
+        public T Load<T>(string module, CoreAI core, DataModuleEvent<T> mEvent = null, bool usePresetEvent = true, bool usePresetData = true) where T : DataModule<T>, new()
+        {
+            DataModule<T>.Preset preset;
+            if (DataModule<T>.DataPreset.TryGetValue(module, out preset))
+            {
+                T newInstance = (usePresetData) ? (T)preset.Data.MemberwiseClone() : new T();
+                if (usePresetEvent) preset.OnLoad(core, newInstance);
+                if (mEvent != null) mEvent(core, newInstance);
+                return newInstance;
+            }
+            return new T();
+        }
+    }
+
+    public abstract class DataModule<T> : DataModule where T : DataModule<T>
     {
         private static int HashCode = 0;
         private static bool initialized = false;
+
+        public struct Preset
+        {
+            public string name;
+            public T Data;
+            public DataModuleEvent<T> OnInitialize;
+            public DataModuleEvent<T> OnLoad;
+        }
+
+        public static Dictionary<string, Preset> DataPreset;
 
         public static int GetHandleHash
         {
@@ -21,7 +63,6 @@ namespace ModularSkylines
                     initialized = true;
                 }
                 return HashCode;
-
             }
         }
 
@@ -29,11 +70,25 @@ namespace ModularSkylines
         {
             return GetHandleHash;
         }
+
+        public DataModuleEvent<T> GetDataDelegate;
+
+        public override void GetDataEvent(CoreAI core)
+        {
+            if(DataAltered)
+                GetDataDelegate(core, (T)this);
+        }
+    }
+
+    //This will differentiate modules with data that must be saved to disk, as most don't actually need saved.
+    public abstract class PersistentDataModule : DataModule<PersistentDataModule>
+    {
+
     }
 
     public struct CommonConsumption
     {
-        public CommonConsumption(int electric = 0, int water = 0, int sewage = 0, int garbage = 0, int cost = 0, int income = 0)
+        public CommonConsumption(short electric = 0, short water = 0, short sewage = 0, short garbage = 0, int cost = 0, int income = 0)
         {
             electricityConsumption = electric;
             waterConsumption = water;
@@ -43,10 +98,10 @@ namespace ModularSkylines
             publicIncome = income;
         }
         public int netIncome => publicIncome - publicCost;
-        public int electricityConsumption;
-        public int waterConsumption;
-        public int sewageAccumulation;
-        public int garbageAccumulation;
+        public short electricityConsumption;
+        public short waterConsumption;
+        public short sewageAccumulation;
+        public short garbageAccumulation;
         public int publicIncome;
         public int publicCost;
     }
@@ -69,6 +124,8 @@ namespace ModularSkylines
         //public short homeCount = 0;
         public short maxHomeCount = 0;
         public short maxVisitors = 0;
+
+        
     }
 
 
